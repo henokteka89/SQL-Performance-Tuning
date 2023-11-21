@@ -1,0 +1,50 @@
+USE YourDatabaseName;
+
+CREATE PROCEDURE dbo.sp_whopro
+    @start_time DATETIME = NULL,
+    @end_time DATETIME = NULL,
+    @top_rows INT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Handle cases where only the timeline or both timeline and top rows are provided
+    IF @top_rows IS NULL
+    BEGIN
+        SET @top_rows = 100; -- Default to 100 rows if top_rows is not provided
+    END
+
+    -- Your logic for retrieving all rows from whoisactive within the specified time frame
+    SELECT TOP (@top_rows)
+           [dd hh:mm:ss.mss],
+           [session_id],
+           [sql_text],
+           [sql_command],
+           [login_name],
+           [wait_info],
+           [tran_log_writes],
+           [CPU],
+           [tempdb_allocations],
+           [tempdb_current],
+           [blocking_session_id],
+           [reads],
+           [writes],
+           [physical_reads],
+           [query_plan],
+           [used_memory],
+           [status],
+           [tran_start_time],
+           [implicit_tran],
+           [open_tran_count],
+           [percent_complete],
+           [host_name],
+           [database_name],
+           [program_name],
+           [start_time],
+           [login_time],
+           [request_id],
+           [collection_time]
+    FROM whoisactive
+    WHERE [collection_time] BETWEEN @start_time AND @end_time OR (@start_time IS NULL AND @end_time IS NULL)
+    ORDER BY [collection_time] DESC;
+END;
