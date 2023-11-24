@@ -1,0 +1,14 @@
+Select top 5  
+    (total_logical_reads/execution_count) as avg_logical_reads, 
+    (total_logical_writes/execution_count) as avg_logical_writes, 
+    (total_physical_reads/execution_count) as avg_phys_reads, 
+     Execution_count,  
+    Statement_start_offset as stmt_start_offset,  
+    sql_handle,  
+    plan_handle 
+From sys.dm_exec_query_stats   
+Order by  
+ (total_logical_reads + total_logical_writes) Desc
+
+
+ SELECT * FROM sys.dm_exec_sql_text (0x02000000FD26D322769CEE691C933F258772430BD1146CFF0000000000000000000000000000000000000000)
