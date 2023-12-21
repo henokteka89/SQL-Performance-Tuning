@@ -1,0 +1,19 @@
+- Avoid "Convert" function in where clause. 
+e.g. where convert (varchar (10), a.modifieddate, 101) = '01/01/2020' --this will be treated as expression, leading to expression comparision, hence will lead to SCAN instead of SEEK
+to resolve this avoid the convert. the query that has this is called non-sargible/not able to use the index for seek/. 
+e.g.where a.modifieddate >= '2020/01/01' and a.modifieddate < '2020/01/02'
+but this improves, but might not be ideal. 
+
+- preceeding wild card
+assume you have index on last name and your query has where lastname = '%teka'
+this will do scan and high cpu/IO. 
+solution: put the wild card at the end. where lastname= 'teka%'
+
+--multi-column index
+in multi-column index, the order of columns can matter. 
+e.g. IX_Lastname_Firstname_MiddleName and you query says select * from AW where firstname='hen'. this willl result in index scan, it will go to the leaf level and scan every thing. 
+Order of index is first the lastname, followed by firstname then middlename therefore the rule is first to seek on lastname, if not by lastname and firstname, if not by last-first-lastname. order of read LEFT to RIGHT.
+
+solution 1: modify the query to include last name (specially if the app can ignore lastname and the dataset is small). select * from AW where firstname='hen' and lastname='tek'
+solution 2: 
+
