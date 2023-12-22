@@ -5,9 +5,9 @@ e.g.where a.modifieddate >= '2020/01/01' and a.modifieddate < '2020/01/02'
 but this improves, but might not be ideal. 
 
 - preceeding wild card
-assume you have index on last name and your query has where lastname = '%teka'
+assume you have index on last name and your query has where lastname = '%teka' or lastname Like '%teka'
 this will do scan and high cpu/IO. 
-solution: put the wild card at the end. where lastname= 'teka%'
+solution: put the wild card at the end. where lastname= 'teka%' or Like 'teka'
 
 --multi-column index
 in multi-column index, the order of columns can matter. 
@@ -17,3 +17,27 @@ Order of index is first the lastname, followed by firstname then middlename ther
 solution 1: modify the query to include last name (specially if the app can ignore lastname and the dataset is small). select * from AW where firstname='hen' and lastname='tek'
 solution 2: 
 
+
+More Query optimization tips for better performance
+
+Tip 1: Add missing indexes
+
+Tip 2: Check for unused indexes
+
+Tip 3: Avoid using multiple OR in the FILTER predicate
+Tip 4: Use wildcards at the end of a phrase only
+
+Tip 5: Avoid too many JOINs
+
+Tip 6: Avoid using SELECT DISTINCT
+
+Tip 7: Use SELECT fields instead of SELECT *
+
+Tip 8: Use TOP to sample query results
+
+Tip 9: Run the query during off-peak hours
+
+Tip 10: Minimize the usage of any query hint
+Tip 11: Minimize large write operations
+
+Tip 12: Create joins with INNER JOIN (not WHERE)
