@@ -1,10 +1,15 @@
+use 
+set statistics IO on 
+set statistics time on 
+to check time and IO. dont use in prod unless otherwise asked to. 
+
 - Avoid "Convert" function in where clause. 
 e.g. where convert (varchar (10), a.modifieddate, 101) = '01/01/2020' --this will be treated as expression, leading to expression comparision, hence will lead to SCAN instead of SEEK
 to resolve this avoid the convert. the query that has this is called non-sargible/not able to use the index for seek/. 
 e.g.where a.modifieddate >= '2020/01/01' and a.modifieddate < '2020/01/02'
 but this improves, but might not be ideal. 
 
-- preceeding wild card
+- preceding wild card
 assume you have index on last name and your query has where lastname = '%teka' or lastname Like '%teka'
 this will do scan and high cpu/IO. 
 solution: put the wild card at the end. where lastname= 'teka%' or Like 'teka'
@@ -17,6 +22,20 @@ Order of index is first the lastname, followed by firstname then middlename ther
 solution 1: modify the query to include last name (specially if the app can ignore lastname and the dataset is small). select * from AW where firstname='hen' and lastname='tek'
 solution 2: 
 
+--explicit converttions
+varchar to nvarchar
+e.g. where accountnumber = N'AW00029034'
+Account number is varchar, but it is converting to nvarchar. 
+to check this- on the actual execution plan hover the cursor over select (the first in the left) - it will show you "WARNING" implicit conversion "type conversion in expression(Convert_Explicit)..." 
+solution: use only 'AW0029034'
+
+--DYNAMIC SQL PLAN CACHE
+when we use dynamic sql, optimizer can have different plan for different parameters in plan cache. 
+e.g. set @cnt = 1
+     while @cnt <= 100
+begin 
+set @sqlstring = ....where manager id = ' + cast(@cnt as nvarchar...execute sp_executesql set @cnt = @cnt + 1
+different plan for manager id 1, 2, 3, 4...100.
 
 More Query optimization tips for better performance
 
