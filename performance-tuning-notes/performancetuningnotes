@@ -30,12 +30,14 @@ to check this- on the actual execution plan hover the cursor over select (the fi
 solution: use only 'AW0029034'
 
 --DYNAMIC SQL PLAN CACHE
-when we use dynamic sql, optimizer can have different plan for different parameters in plan cache. 
+when we use dynamic sql, optimizer can have different plan for different parameters in plan cache. parametrization. 
 e.g. set @cnt = 1
      while @cnt <= 100
 begin 
-set @sqlstring = ....where manager id = ' + cast(@cnt as nvarchar...execute sp_executesql set @cnt = @cnt + 1
+set @sqlstring = ....where manager_id = ' + cast(@cnt as nvarchar...execute sp_executesql set @cnt = @cnt + 1
 different plan for manager id 1, 2, 3, 4...100.
+
+
 
 More Query optimization tips for better performance
 
