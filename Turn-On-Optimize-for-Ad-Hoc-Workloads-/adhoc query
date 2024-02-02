@@ -36,9 +36,9 @@ SELECT Convert(INT,Sum
   FROM sys.dm_exec_cached_plans AS a
 
 
-to run as a job
+-- to run as a job
 
-CREATE TABLE QueryResults (
+CREATE TABLE AdhocPlanCacheinfo (
     RunDateTime DATETIME,
     DatabaseName NVARCHAR(255),
     SingleUse INT,
@@ -46,11 +46,11 @@ CREATE TABLE QueryResults (
     KB INT,
     AdHocQueryPercentage FLOAT
 );
-CREATE PROCEDURE InsertQueryResults
+CREATE PROCEDURE usp_AdhocPlanCacheinfo
 AS
 BEGIN
       -- Insert results from the first query
-    INSERT INTO QueryResults (RunDateTime, DatabaseName, SingleUse, Reused, KB)
+    INSERT INTO AdhocPlanCacheinfo (RunDateTime, DatabaseName, SingleUse, Reused, KB)
     SELECT 
         GETDATE() AS RunDateTime,
         Db_Name(QueryText.dbid) AS DatabaseName,
@@ -67,7 +67,7 @@ BEGIN
         QueryText.dbid;
 
     -- Insert results from the second query
-    INSERT INTO QueryResults (RunDateTime, AdHocQueryPercentage)
+    INSERT INTO AdhocPlanCacheinfo (RunDateTime, AdHocQueryPercentage)
     SELECT 
         GETDATE() AS RunDateTime,
         Convert(INT, SUM(CASE a.objtype WHEN 'Adhoc' THEN 1 ELSE 0 END) * 1.00 / COUNT(*) * 100) AS AdHocQueryPercentage
