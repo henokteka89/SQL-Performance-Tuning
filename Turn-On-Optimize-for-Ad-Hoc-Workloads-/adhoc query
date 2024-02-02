@@ -15,3 +15,67 @@ FROM sys.dm_exec_cached_plans) T
 
 better 
 https://solutioncenter.apexsql.com/monitoring-sql-server-ad-hoc-query-use-and-abuse/#:~:text=The%20following%20query%20can%20be%20used%20for%20that%2C,%27Ad-hoc%20query%20%25%27%20FROM%20sys.%20dm_exec_cached_plans%20AS%20a
+
+---in each database 
+SELECT Db_Name(QueryText.dbid) AS database_name,
+  Sum(CASE WHEN ExecPlans.usecounts = 1 THEN 1 ELSE 0 END) AS Single,
+  Sum(CASE WHEN ExecPlans.usecounts > 1 THEN 1 ELSE 0 END) AS Reused,
+  Sum(ExecPlans.size_in_bytes) / (1024) AS KB
+   FROM sys.dm_exec_cached_plans AS ExecPlans
+    CROSS APPLY sys.dm_exec_sql_text(ExecPlans.plan_handle) AS QueryText
+   WHERE ExecPlans.cacheobjtype = 'Compiled Plan' AND QueryText.dbid IS NOT NULL
+     GROUP BY QueryText.dbid;
+---percentage
+SELECT Convert(INT,Sum
+        (
+        CASE a.objtype 
+        WHEN 'Adhoc' 
+        THEN 1 ELSE 0 END)
+        * 1.00/ Count(*) * 100
+              ) as 'Ad-hoc query %'
+  FROM sys.dm_exec_cached_plans AS a
+
+
+to run as a job
+
+CREATE TABLE QueryResults (
+    RunDateTime DATETIME,
+    DatabaseName NVARCHAR(255),
+    SingleUse INT,
+    Reused INT,
+    KB INT,
+    AdHocQueryPercentage FLOAT
+);
+CREATE PROCEDURE InsertQueryResults
+AS
+BEGIN
+      -- Insert results from the first query
+    INSERT INTO QueryResults (RunDateTime, DatabaseName, SingleUse, Reused, KB)
+    SELECT 
+        GETDATE() AS RunDateTime,
+        Db_Name(QueryText.dbid) AS DatabaseName,
+        Sum(CASE WHEN ExecPlans.usecounts = 1 THEN 1 ELSE 0 END) AS SingleUse,
+        Sum(CASE WHEN ExecPlans.usecounts > 1 THEN 1 ELSE 0 END) AS Reused,
+        Sum(ExecPlans.size_in_bytes) / 1024 AS KB
+    FROM 
+        sys.dm_exec_cached_plans AS ExecPlans
+    CROSS APPLY 
+        sys.dm_exec_sql_text(ExecPlans.plan_handle) AS QueryText
+    WHERE 
+        ExecPlans.cacheobjtype = 'Compiled Plan' AND QueryText.dbid IS NOT NULL
+    GROUP BY 
+        QueryText.dbid;
+
+    -- Insert results from the second query
+    INSERT INTO QueryResults (RunDateTime, AdHocQueryPercentage)
+    SELECT 
+        GETDATE() AS RunDateTime,
+        Convert(INT, SUM(CASE a.objtype WHEN 'Adhoc' THEN 1 ELSE 0 END) * 1.00 / COUNT(*) * 100) AS AdHocQueryPercentage
+    FROM 
+        sys.dm_exec_cached_plans AS a;
+END;
+
+
+--job
+EXEC InsertQueryResults;
+
