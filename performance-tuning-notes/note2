@@ -1,0 +1,47 @@
+SQL Query Optimization Best Practices
+
+Optimizing SQL queries in SQL Server is crucial for improving performance and ensuring efficient use of database resources. Here are some best practices for SQL query optimization in SQL Server:
+
+1). Use Indexes Wisely:
+a. Identify frequently used columns in WHERE, JOIN, and ORDER BY clauses and create appropriate indexes on those columns.
+b. Avoid over-indexing as it can degrade insert and update performance.
+c. Regularly monitor index usage and performance to ensure they are providing benefits.
+
+2). Write Efficient Queries:
+a. Minimize the use of wildcard characters, especially at the beginning of LIKE patterns, as it prevents the use of indexes.
+b. Use EXISTS or IN instead of DISTINCT or GROUP BY when possible.
+c. Avoid using SELECT * and fetch only the necessary columns.
+d. Use UNION ALL instead of UNION if you don't need to remove duplicate rows, as it is faster.
+e. Use JOINs instead of subqueries for better performance.
+f. Avoid using scalar functions in WHERE clauses as they can prevent index usage.
+
+3). Optimize Joins:
+a. Use INNER JOIN instead of OUTER JOIN if possible, as INNER JOIN typically performs better.
+b. Ensure that join columns are indexed for better join performance.
+c. Consider using table hints like (NOLOCK) if consistent reads are not required, but use them cautiously as they can lead to dirty reads.
+
+4). Avoid Cursors and Loops:
+a. Use set-based operations instead of cursors or loops whenever possible.
+b. Cursors can be inefficient and lead to poor performance, especially with large datasets.
+
+5). Use Query Execution Plan:
+a. Analyze query execution plans using tools like SQL Server Management Studio (SSMS) or SQL Server Profiler to identify bottlenecks and optimize queries accordingly.
+b. Look for missing indexes, expensive operators, and table scans in execution plans.
+
+6). Update Statistics Regularly:
+a. Keep statistics up-to-date by regularly updating them using the UPDATE STATISTICS command or enabling the auto-update statistics feature.
+b. Updated statistics help the query optimizer make better decisions about query execution plans.
+
+7. Avoid Nested Queries:
+a. Nested queries can be harder for the optimizer to optimize effectively.
+b. Consider rewriting them as JOINs or using CTEs (Common Table Expressions) if possible.
+
+8. Partitioning:
+a. Consider partitioning large tables to improve query performance, especially for queries that access a subset of data based on specific criteria.
+
+9. Use Stored Procedures:
+a. Encapsulate frequently executed queries in stored procedures to promote code reusability and optimize query execution plans.
+
+10). Regular Monitoring and Tuning:
+a. Continuously monitor database performance using SQL Server tools or third-party monitoring solutions.
+b. Regularly review and tune queries based on performance metrics and user feedback. 
