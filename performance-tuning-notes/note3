@@ -1,0 +1,22 @@
+Few Tips to improve performance of Stored Procedure in SQL Server
+Use SET NOCOUNT ON as first statement of your stored procedure.
+Prefer fully qualified name while executing the stored procedure like EXEC dbo.<procedurename>
+Do not use sp_<procedurename> as "sp_" is a reserved keyword.
+Prefer sp_execuresql over EXECUTE command.
+Use SCHEMA name before the table name like dbo.<tablename>
+Fetch only required columns is SELECT queries. Do not use SELECT *
+Use WITH (NOLOCK)
+Avoid using CURSOR.
+Prefer table variable instead of temp table.
+Transfer the relevant records from the tables to the table variable to disconnect primary table references.
+Prefer tables JOINs over the use of subqueries in WHERE clause.
+Avoid Costly operators (LIKE, NOT LIKE) and implicit/ explicit operators (CAST(), CONVERT(), GETDATE()) in WHERE clause.
+Create VIEWs for repeatedly used SELECT queries.
+Break down large stored procedures into sub procedures.
+Keep Transactions SHORT. This will help in avoiding locks and deadlocks.
+Create Non-Clustered indexes, wherever necessary.
+Use EXISTS instead of COUNT() in subqueries.
+Avoid dynamic SQL queries.
+Prefer to have custom paging logic when result-set contains many records.
+
+https://www.linkedin.com/pulse/tips-improve-performance-stored-procedure-sql-server-pawan-rahate-3y4qf/?trackingId=8aP3to%2B4QOqet73SrnsrIQ%3D%3D
