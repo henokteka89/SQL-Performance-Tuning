@@ -1,0 +1,13 @@
+https://learn.microsoft.com/en-us/sql/t-sql/queries/hints-transact-sql-query?view=sql-server-ver16#use_hint
+
+'FORCE_DEFAULT_CARDINALITY_ESTIMATION'
+
+Forces the Query Optimizer to use Cardinality Estimation model that corresponds to the current database compatibility level. Use this hint to override Database Scoped Configuration setting LEGACY_CARDINALITY_ESTIMATION = ON or trace flag 9481.
+
+'FORCE_LEGACY_CARDINALITY_ESTIMATION'
+
+Forces the Query Optimizer to use Cardinality Estimation model of SQL Server 2012 (11.x) and earlier versions. This hint name is equivalent to trace flag 9481 or Database Scoped Configuration setting LEGACY_CARDINALITY_ESTIMATION = ON.
+
+'QUERY_OPTIMIZER_COMPATIBILITY_LEVEL_n'
+
+Forces the Query Optimizer behavior at a query level. This behavior happens as if the query was compiled with database compatibility level n, where n is a supported database compatibility level (for example 100, 130, etc.). Refer to sys.dm_exec_valid_use_hints for a list of currently supported values for n.
