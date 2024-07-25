@@ -1,0 +1,28 @@
+demo: https://techcommunity.microsoft.com/t5/sql-server-support-blog/query-performance-and-multi-statement-table-valued-functions/ba-p/316226
+
+https://stackoverflow.com/questions/4109152/table-valued-function-killing-my-query-performance
+
+On the SQL Server 2014 we were able to solve our issue by inserting table value function data into temp table and then doing join on it. Instead of doing a join directly to table value function.
+
+This improved our execution time from 2 min to 4 secs.
+
+Here is an example that worked for our team:
+
+--SLOW QUERY (2 min):
+
+DECLARE @id INT = 1;
+
+SELECT * 
+FROM [data].[someTable] T
+INNER JOIN [data].[tableValueFunction](@id) TVF ON TVF.id = T.id;
+--FAST QUERY (4 sec):
+
+DECLARE @id INT = 1;
+
+SELECT * 
+INTO #tableValueFunction
+FROM [data].[tableValueFunction](@id) TVF
+
+SELECT * 
+FROM [data].[someTable] T
+INNER JOIN #tableValueFunction TVF ON TVF.id = T.id;
