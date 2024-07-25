@@ -1,0 +1,68 @@
+---Lists all plans with warning (no filter)
+SELECT
+    q.text AS QueryText,
+    qp.query_plan AS QueryPlan
+FROM
+    sys.dm_exec_cached_plans cp
+CROSS APPLY
+    sys.dm_exec_query_plan(cp.plan_handle) qp
+CROSS APPLY
+    sys.dm_exec_sql_text(cp.plan_handle) q
+WHERE
+    qp.query_plan.exist('declare namespace p="http://schemas.microsoft.com/sqlserver/2004/07/showplan"; 
+                         //p:Warnings') = 1
+
+---Lists expensive plans with warning that are expensive (enter the logical read and worker time you wanted)
+SELECT 
+    qs.plan_handle,
+    qs.execution_count,
+    qs.total_worker_time AS Total_CPU_Time,
+    qs.total_elapsed_time,
+    qs.total_logical_reads,
+    qs.total_physical_reads,
+    qp.query_plan,
+    SUBSTRING(st.text, (qs.statement_start_offset/2) + 1,
+        ((CASE qs.statement_end_offset
+            WHEN -1 THEN DATALENGTH(st.text)
+            ELSE qs.statement_end_offset
+            END - qs.statement_start_offset)/2) + 1) AS statement_text
+FROM sys.dm_exec_query_stats AS qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) AS qp
+WHERE CAST(query_plan AS NVARCHAR(MAX)) LIKE '%Warning%'
+AND (
+    qs.total_logical_reads > SOME_LARGE_VALUE
+    OR qs.total_worker_time > SOME_LARGE_VALUE
+    -- Add other conditions for "expensive" here
+)
+ORDER BY qs.total_worker_time DESC, qs.total_logical_reads DESC;
+
+---Lists expensive plans with warning that are expensive (enter the logical read and worker time you wanted). this gives average values and memory grant information
+
+SELECT 
+--top 20
+    qs.plan_handle,
+    qs.execution_count,
+    qs.total_logical_reads, qs.total_logical_reads / qs.execution_count AS avg_logical_reads,
+    qs.total_worker_time AS Total_CPU_Time, qs.total_worker_time / qs.execution_count AS avg_cpu_time,
+    qs.total_elapsed_time / qs.execution_count AS avg_elapsed_time,
+    (SELECT TOP 1 requested_memory_kb FROM sys.dm_exec_query_memory_grants AS mg WHERE mg.plan_handle = qs.plan_handle ORDER BY grant_time DESC) AS last_memory_grant_kb,
+    AVG(mg.requested_memory_kb) OVER(PARTITION BY qs.plan_handle) AS avg_memory_grants,
+    SUBSTRING(st.text, (qs.statement_start_offset/2) + 1,
+        ((CASE qs.statement_end_offset
+            WHEN -1 THEN DATALENGTH(st.text)
+            ELSE qs.statement_end_offset
+            END - qs.statement_start_offset)/2) + 1) AS statement_text,
+    qp.query_plan
+FROM sys.dm_exec_query_stats AS qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) AS qp
+LEFT JOIN sys.dm_exec_query_memory_grants AS mg ON qs.plan_handle = mg.plan_handle
+WHERE CAST(qp.query_plan AS NVARCHAR(MAX)) LIKE '%Warning%'
+AND (
+    qs.total_logical_reads / qs.execution_count > 100000 -- Example threshold for avg logical reads
+    OR qs.total_worker_time / qs.execution_count > 3000 -- Example threshold for avg cpu time
+    -- You can adjust the thresholds based on your system's performance characteristics
+)
+--GROUP BY qs.plan_handle, qs.execution_count, qs.total_logical_reads, qs.total_worker_time, qs.total_elapsed_time, st.text, qp.query_plan
+--ORDER BY avg_cpu_time DESC, avg_logical_reads DESC;
