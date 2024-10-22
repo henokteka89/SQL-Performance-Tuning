@@ -1,0 +1,33 @@
+CREATE EVENT SESSION [CaptureProcParams] ON SERVER
+ADD EVENT sqlserver.rpc_completed(
+    ACTION(sqlserver.sql_text, sqlserver.client_app_name, sqlserver.username, sqlserver.database_id)
+),
+ADD EVENT sqlserver.sp_statement_completed(
+    ACTION(sqlserver.sql_text, sqlserver.client_app_name, sqlserver.username, sqlserver.database_id)
+)
+ADD TARGET package0.event_file(SET filename = 'C:\temp\CaptureProcParams.xel', max_file_size = 10, max_rollover_files = 5)
+WITH (STARTUP_STATE = OFF);
+GO
+
+-- Start the session
+ALTER EVENT SESSION [CaptureProcParams] ON SERVER STATE = START;
+GO
+
+
+-- Stop the session
+ALTER EVENT SESSION [CaptureProcParams] ON SERVER STATE = STOP;
+GO
+
+---- Drop the session
+DROP EVENT SESSION [CaptureProcParams] ON SERVER;
+GO
+
+
+-- Query the captured events from the Extended Events session
+SELECT 
+    ed.event_data.value('(event/action[@name="sql_text"]/value)[1]', 'nvarchar(max)') AS sql_text,
+    ed.event_data.value('(event/action[@name="client_app_name"]/value)[1]', 'nvarchar(max)') AS client_app_name,
+    ed.event_data.value('(event/action[@name="username"]/value)[1]', 'nvarchar(max)') AS username
+FROM sys.fn_xe_file_target_read_file('C:\temp\CaptureProcParams*.xel', NULL, NULL, NULL) AS events
+CROSS APPLY (SELECT CAST(events.event_data AS XML) AS event_data) AS ed;
+ 
