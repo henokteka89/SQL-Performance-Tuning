@@ -1,0 +1,47 @@
+create table #t 
+(id int, index c clustered columnstore );
+
+SELECT 
+    u.Id,
+    u.DisplayName,
+    u.LastAccessDate,
+    u.Reputation,
+    y.LastActivityDate,
+    DATEDIFF(DAY, u.LastAccessDate, y.LastActivityDate) AS diff
+FROM 
+    dbo.Users AS u
+	left join #t as t on 1=0
+JOIN 
+    (
+        SELECT 
+            MAX(x.LastActivityDate) AS LastActivityDate,
+            x.OwnerUserId
+        FROM 
+            (
+                SELECT 
+                    p.LastActivityDate,
+                    p.OwnerUserId
+                FROM 
+                    dbo.Posts AS p
+                UNION
+                SELECT 
+                    c.CreationDate,
+                    c.UserId
+                FROM 
+                    dbo.Comments AS c
+                UNION
+                SELECT 
+                    v.CreationDate,
+                    v.UserId
+                FROM 
+                    dbo.Votes AS v
+            ) AS x
+        GROUP BY 
+            x.OwnerUserId
+    ) AS y
+ON 
+    y.OwnerUserId = u.Id
+WHERE 
+    DATEDIFF(DAY, u.LastAccessDate, y.LastActivityDate) >= (365 * 3)
+ORDER BY 
+    y.LastActivityDate DESC;
