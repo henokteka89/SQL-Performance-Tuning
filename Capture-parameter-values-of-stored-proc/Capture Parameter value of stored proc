@@ -43,6 +43,7 @@ GO
 
 ---
 /*
+-- Altergin size of event file
 ALTER EVENT SESSION [CaptureModuleEnd] ON SERVER 
 DROP TARGET package0.event_file
 ALTER EVENT SESSION [CaptureModuleEnd] ON SERVER 
@@ -50,3 +51,30 @@ ADD TARGET package0.event_file(SET filename=N'ModuleEndCapture.xel',max_file_siz
 GO
 */
 ---
+---
+/*
+-- Alter to include multiple stored procs
+ALTER EVENT SESSION CaptureModuleEnd
+ON SERVER
+DROP EVENT sqlserver.module_end;
+
+ALTER EVENT SESSION CaptureModuleEnd
+ON SERVER
+ADD EVENT sqlserver.module_end(
+    ACTION (
+        sqlserver.sql_text,
+        sqlserver.database_name,
+        sqlserver.username,
+        sqlserver.client_hostname,
+        sqlserver.client_app_name
+    )
+    WHERE sqlserver.sql_text LIKE '%usp_GetRecentSalesOrders%'
+       OR sqlserver.sql_text LIKE '%usp_ProductSalesByRegion%'
+);
+GO
+
+-- Restart the session
+--ALTER EVENT SESSION CaptureModuleEnd ON SERVER STATE = START;
+  */
+---
+
