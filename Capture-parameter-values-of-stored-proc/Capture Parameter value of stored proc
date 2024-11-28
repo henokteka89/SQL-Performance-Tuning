@@ -1,0 +1,52 @@
+-- Capture Stored Procedure Execution Details Using Extended Events
+
+-- Create the Extended Events Session
+CREATE EVENT SESSION CaptureModuleEnd
+ON SERVER
+ADD EVENT sqlserver.module_end(
+    ACTION (
+        sqlserver.sql_text,
+        sqlserver.database_name,
+        sqlserver.username,
+        sqlserver.client_hostname,
+        sqlserver.client_app_name
+    )
+    WHERE sqlserver.sql_text LIKE '%usp_GetRecentSalesOrders%' -- Filter by procedure name
+)
+ADD TARGET package0.event_file (SET filename = 'ModuleEndCapture.xel')
+WITH (STARTUP_STATE = ON); -- Ensure the session starts automatically with SQL Server
+GO
+
+-- Start the session
+ALTER EVENT SESSION CaptureModuleEnd ON SERVER STATE = START;
+
+-- Query Captured Data
+ SELECT
+    event_xml.value('(event/action[@name="sql_text"]/value)[1]', 'NVARCHAR(MAX)') AS sql_text,
+    event_xml.value('(event/action[@name="database_name"]/value)[1]', 'NVARCHAR(MAX)') AS database_name,
+    event_xml.value('(event/action[@name="username"]/value)[1]', 'NVARCHAR(MAX)') AS username,
+    event_xml.value('(event/action[@name="client_hostname"]/value)[1]', 'NVARCHAR(MAX)') AS client_hostname,
+    event_xml.value('(event/action[@name="client_app_name"]/value)[1]', 'NVARCHAR(MAX)') AS client_app_name
+FROM 
+    (SELECT CAST(event_data AS XML) AS event_xml
+     FROM sys.fn_xe_file_target_read_file('ModuleEndCapture*.xel', NULL, NULL, NULL)) AS xe;
+
+-- Stop the Extended Events Session
+ALTER EVENT SESSION CaptureModuleEnd ON SERVER STATE = STOP;
+GO
+
+-- Drop the Extended Events Session
+
+DROP EVENT SESSION CaptureModuleEnd ON SERVER;
+GO
+
+
+---
+/*
+ALTER EVENT SESSION [CaptureModuleEnd] ON SERVER 
+DROP TARGET package0.event_file
+ALTER EVENT SESSION [CaptureModuleEnd] ON SERVER 
+ADD TARGET package0.event_file(SET filename=N'ModuleEndCapture.xel',max_file_size=(100))
+GO
+*/
+---
