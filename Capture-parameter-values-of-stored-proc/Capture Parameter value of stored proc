@@ -49,6 +49,19 @@ DROP TARGET package0.event_file
 ALTER EVENT SESSION [CaptureModuleEnd] ON SERVER 
 ADD TARGET package0.event_file(SET filename=N'ModuleEndCapture.xel',max_file_size=(100))
 GO
+
+OR
+
+ALTER EVENT SESSION CaptureModuleEnd ON SERVER
+ADD EVENT sqlserver.module_end
+ADD TARGET package0.event_file 
+(
+    SET filename = 'ModuleEndCapture.xel',
+        max_file_size = 10MB,          -- Set maximum size for each file
+        max_rollover_files = 5          -- Set maximum number of files to retain
+)
+WITH (STARTUP_STATE = ON);
+
 */
 ---
 ---
