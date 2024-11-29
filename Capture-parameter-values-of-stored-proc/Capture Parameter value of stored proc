@@ -91,3 +91,32 @@ GO
   */
 ---
 
+
+--insert into a table
+CREATE TABLE dbo.ModuleEndEventLog
+(
+    EventID INT IDENTITY PRIMARY KEY,
+    SQLText NVARCHAR(MAX),
+    DatabaseName NVARCHAR(128),
+    Username NVARCHAR(128),
+    ClientHostname NVARCHAR(128),
+    ClientAppName NVARCHAR(128),
+    EventTime DATETIME DEFAULT GETDATE()  -- Optional to track when the event is logged into the table
+);
+
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Insert the event data into the target table
+    INSERT INTO dbo.ModuleEndEventLog (SQLText, DatabaseName, Username, ClientHostname, ClientAppName)
+    SELECT 
+        event_data_xml.value('(/event/action[@name="sql_text"]/value)[1]', 'NVARCHAR(MAX)') AS SQLText,
+        event_data_xml.value('(/event/action[@name="database_name"]/value)[1]', 'NVARCHAR(128)') AS DatabaseName,
+        event_data_xml.value('(/event/action[@name="username"]/value)[1]', 'NVARCHAR(128)') AS Username,
+        event_data_xml.value('(/event/action[@name="client_hostname"]/value)[1]', 'NVARCHAR(128)') AS ClientHostname,
+        event_data_xml.value('(/event/action[@name="client_app_name"]/value)[1]', 'NVARCHAR(128)') AS ClientAppName
+    FROM sys.fn_xe_file_target_read_file('ModuleEndCapture*.xel', NULL, NULL, NULL) AS x
+    CROSS APPLY (SELECT CAST(x.event_data AS XML) AS event_data_xml) AS data_table;
+
+    PRINT 'Event data transferred successfully to ModuleEndEventLog.';
+END;
