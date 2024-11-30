@@ -44,6 +44,7 @@ GO
 
 
 
+---WHERE (sqlserver.sql_text LIKE '%usp_GetRecentSalesOrders%' OR sqlserver.sql_text LIKE '%usp_UpdateCustomerOrders%')
 
 
 
