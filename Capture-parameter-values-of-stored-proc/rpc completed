@@ -1,0 +1,39 @@
+ALTER EVENT SESSION CaptureRPCComplete ON SERVER
+DROP EVENT sqlserver.rpc_completed;
+
+ALTER EVENT SESSION CaptureRPCComplete ON SERVER
+ADD EVENT sqlserver.rpc_completed
+(
+    ACTION
+    (
+        sqlserver.sql_text,
+        sqlserver.database_name,
+        sqlserver.username,
+        sqlserver.client_hostname,
+        sqlserver.client_app_name
+    )
+    WHERE (sqlserver.sql_text LIKE '%usp_UpdateCustomerOrders%')
+);
+
+--To capture multiple stored procedures, you can use an OR condition, like this:
+ALTER EVENT SESSION CaptureRPCComplete ON SERVER
+DROP EVENT sqlserver.rpc_completed;
+
+ALTER EVENT SESSION CaptureRPCComplete ON SERVER
+ADD EVENT sqlserver.rpc_completed
+(
+    ACTION
+    (
+        sqlserver.sql_text,
+        sqlserver.database_name,
+        sqlserver.username,
+        sqlserver.client_hostname,
+        sqlserver.client_app_name
+    )
+    WHERE (sqlserver.sql_text LIKE '%usp_GetRecentSalesOrders%' 
+           OR sqlserver.sql_text LIKE '%usp_UpdateCustomerOrders%')
+);
+
+ALTER EVENT SESSION CaptureRPCComplete ON SERVER STATE = START;
+ALTER EVENT SESSION CaptureRPCComplete ON SERVER STATE = STOP;
+
