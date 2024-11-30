@@ -1,3 +1,65 @@
+-- Drop the existing session if it already exists
+IF EXISTS (SELECT * FROM sys.server_event_sessions WHERE name = 'CaptureRPCComplete')
+BEGIN
+    DROP EVENT SESSION CaptureRPCComplete ON SERVER;
+END
+GO
+
+-- Create a new Extended Events session to capture stored procedure executions
+CREATE EVENT SESSION CaptureRPCComplete ON SERVER
+ADD EVENT sqlserver.rpc_completed
+(
+    ACTION
+    (
+        sqlserver.sql_text,
+        sqlserver.database_name,
+        sqlserver.username,
+        sqlserver.client_hostname,
+        sqlserver.client_app_name
+    )
+    WHERE (sqlserver.sql_text LIKE '%usp_GetRecentSalesOrders%') -- Replace with your stored procedure name or condition
+)
+ADD TARGET package0.event_file (SET filename = N'RPCCompleteCapture.xel')
+WITH 
+(
+    MAX_MEMORY = 4096 KB,                -- Memory buffer for the event session
+    EVENT_RETENTION_MODE = ALLOW_SINGLE_EVENT_LOSS,
+    MAX_DISPATCH_LATENCY = 30 SECONDS,   -- Dispatch latency for event data collection
+    MAX_EVENT_SIZE = 0 KB,
+    MEMORY_PARTITION_MODE = NONE,
+    TRACK_CAUSALITY = OFF,
+    STARTUP_STATE = OFF                  -- Start the event session manually
+);
+GO
+
+-- Start the Extended Events session
+ALTER EVENT SESSION CaptureRPCComplete ON SERVER STATE = START;
+GO
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ALTER EVENT SESSION CaptureRPCComplete ON SERVER
 DROP EVENT sqlserver.rpc_completed;
 
