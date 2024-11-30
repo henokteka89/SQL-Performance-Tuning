@@ -1,3 +1,60 @@
+CREATE EVENT SESSION CaptureSPComplete ON SERVER
+ADD EVENT sqlserver.sp_statement_completed
+(
+    ACTION
+    (
+        sqlserver.sql_text,
+        sqlserver.database_name,
+        sqlserver.username,
+        sqlserver.client_hostname,
+        sqlserver.client_app_name
+    )
+    WHERE (sqlserver.sql_text LIKE '%usp_GetRecentSalesOrders%')
+)
+ADD TARGET package0.event_file (SET filename = N'SPCompleteCapture.xel')
+
+WITH 
+(
+    MAX_MEMORY = 4096 KB,                -- Memory buffer for the event session
+    EVENT_RETENTION_MODE = ALLOW_SINGLE_EVENT_LOSS,
+    MAX_DISPATCH_LATENCY = 30 SECONDS,   -- Dispatch latency for event data collection
+    MAX_EVENT_SIZE = 0 KB,
+    MEMORY_PARTITION_MODE = NONE,
+    TRACK_CAUSALITY = OFF,
+    STARTUP_STATE = OFF                  -- Start the event session manually
+);
+GO
+
+-- Start the Extended Events session
+ALTER EVENT SESSION CaptureSPComplete ON SERVER STATE = START;
+GO
+-- Stop the Extended Events session
+ALTER EVENT SESSION CaptureSPComplete ON SERVER STATE = STOP;
+
+_QUERY THE FILE
+SELECT
+    event_data_xml.value('(/event/action[@name="sql_text"]/value)[1]', 'NVARCHAR(MAX)') AS SQLText,
+    event_data_xml.value('(/event/action[@name="database_name"]/value)[1]', 'NVARCHAR(128)') AS DatabaseName,
+    event_data_xml.value('(/event/action[@name="username"]/value)[1]', 'NVARCHAR(128)') AS Username,
+    event_data_xml.value('(/event/action[@name="client_hostname"]/value)[1]', 'NVARCHAR(128)') AS ClientHostname,
+    event_data_xml.value('(/event/action[@name="client_app_name"]/value)[1]', 'NVARCHAR(128)') AS ClientAppName,
+    event_data_xml.value('(/event/@timestamp)[1]', 'DATETIME') AS EventTime
+FROM sys.fn_xe_file_target_read_file('SPCompleteCapture*.xel', NULL, NULL, NULL) AS x
+CROSS APPLY (SELECT CAST(x.event_data AS XML) AS event_data_xml) AS data_table;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 -- Drop the existing session if it already exists
 IF EXISTS (SELECT * FROM sys.server_event_sessions WHERE name = 'CaptureRPCComplete')
 BEGIN
