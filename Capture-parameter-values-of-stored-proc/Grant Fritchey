@@ -1,0 +1,64 @@
+-- Drop the session if it already exists
+IF EXISTS (SELECT * FROM sys.server_event_sessions WHERE name = 'StoredProcedureParameterValues')
+    DROP EVENT SESSION StoredProcedureParameterValues ON SERVER;
+
+-- Create the Extended Event session
+CREATE EVENT SESSION StoredProcedureParameterValues
+ON SERVER
+ADD EVENT sqlserver.rpc_completed(
+    ACTION (sqlserver.database_id, sqlserver.username, sqlserver.client_hostname)
+    WHERE (sqlserver.database_id = 7)), -- Replace with AdventureWorks database_id
+ADD EVENT sqlserver.sql_batch_completed(
+    ACTION (sqlserver.database_id, sqlserver.username, sqlserver.client_hostname)
+    WHERE (sqlserver.database_id = 7)), -- Replace with AdventureWorks database_id
+ADD EVENT sqlserver.sp_statement_completed(
+    ACTION (sqlserver.database_id, sqlserver.username, sqlserver.client_hostname)
+    WHERE (sqlserver.database_id = 7)), -- Replace with AdventureWorks database_id
+ADD EVENT sqlserver.sql_batch_starting(
+    ACTION (sqlserver.database_id, sqlserver.username, sqlserver.client_hostname)
+    WHERE (sqlserver.database_id = 7)), -- Replace with AdventureWorks database_id
+ADD EVENT sqlserver.rpc_starting(
+    ACTION (sqlserver.database_id, sqlserver.username, sqlserver.client_hostname)
+    WHERE (sqlserver.database_id = 7)), -- Replace with AdventureWorks database_id
+ADD EVENT sqlserver.sp_statement_starting(
+    ACTION (sqlserver.database_id, sqlserver.username, sqlserver.client_hostname)
+    WHERE (sqlserver.database_id = 7)) -- Replace with AdventureWorks database_id
+ADD TARGET package0.asynchronous_file_target
+    (SET filename = 'C:\temp\StoredProcedureParameterValues.xel');
+GO
+-- get databaseid 
+--SELECT name AS DatabaseName, database_id
+--FROM sys.databases
+--ORDER BY database_id;
+
+-- Start the Extended Event session
+ALTER EVENT SESSION StoredProcedureParameterValues ON SERVER STATE = START;
+GO
+-- Stop the Extended Event session
+ALTER EVENT SESSION StoredProcedureParameterValues ON SERVER STATE = STOP;
+GO
+
+
+-- Specify the path to your Extended Events file
+DECLARE @FilePath NVARCHAR(MAX) = N'C:\temp\StoredProcedureParameterValues*.xel';
+
+-- Read and parse the event data
+SELECT 
+    event_data_xml.value('(event/@name)[1]', 'NVARCHAR(70)') AS EventName,
+    event_data_xml.value('(event/@timestamp)[1]', 'DATETIME') AS EventTimestamp,
+    event_data_xml.value('(event/action[@name="database_name"]/value)[1]', 'NVARCHAR(70)') AS DatabaseName,
+    event_data_xml.value('(event/action[@name="username"]/value)[1]', 'NVARCHAR(70)') AS Username,
+    event_data_xml.value('(event/action[@name="client_hostname"]/value)[1]', 'NVARCHAR(70)') AS ClientHostName,
+    event_data_xml.value('(event/data[@name="duration"]/value)[1]', 'BIGINT') AS Duration,
+    event_data_xml.value('(event/data[@name="cpu_time"]/value)[1]', 'BIGINT') AS CPUTime,
+    event_data_xml.value('(event/data[@name="reads"]/value)[1]', 'BIGINT') AS Reads,
+    event_data_xml.value('(event/data[@name="writes"]/value)[1]', 'BIGINT') AS Writes,
+    event_data_xml.value('(event/data[@name="statement"]/value)[1]', 'NVARCHAR(MAX)') AS StatementText,
+    event_data_xml.value('(event/data[@name="object_name"]/value)[1]', 'NVARCHAR(MAX)') AS ObjectName
+FROM sys.fn_xe_file_target_read_file(@FilePath, NULL, NULL, NULL) AS EventData
+CROSS APPLY (SELECT CAST(EventData.event_data AS XML) AS event_data_xml) AS XEvent;
+
+-- Stop the Extended Event session
+ALTER EVENT SESSION StoredProcedureParameterValues ON SERVER STATE = STOP;
+GO
+
