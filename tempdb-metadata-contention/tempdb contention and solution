@@ -1,0 +1,71 @@
+-- Check the types of waits from current requests (SQL 2022)
+-- Wait_resource tells you Database ID (DBID), FileID and PageID; wait_type shows you the types like Pagelatch_EX
+SELECT wait_resource, wait_type, * FROM sys.dm_exec_requests
+
+-- To check DBID which database it is refering to eg. 5:2:1244
+select * from sys.databses where database_id = 5
+
+Or --Haripriya
+/* For wait resource (8:1:3610) --> (dbid:fileid:pageid) */
+
+DECLARE @db_id INT = 8         --database id 
+DECLARE @file_id INT = 1        --file id
+DECLARE @page_id INT = 3610     --page id
+
+SELECT 
+   DB_NAME(@db_id) AS [database_name], 
+   OBJECT_NAME(page_info.[object_id], @db_id) AS [object_name],
+   page_info.page_type_desc
+FROM sys.dm_db_page_info(@db_id, @file_id, @page_id, 'DETAILED') AS page_info;
+
+
+
+SELECT
+    r.session_id,
+    r.command, r.status,
+    r.blocking_session_id,
+    r.wait_type, r.wait_resource,
+    r.page_resource,
+    r.wait_time,
+    OBJECT_NAME(dpi.object_id, dpi.database_id) AS system_table_name,
+    DB_name(dpi.database_id) AS database_name
+FROM sys.dm_exec_requests AS r
+CROSS APPLY sys.fn_PageResCracker(r.page_resource) AS prc
+CROSS APPLY sys.dm_db_page_info(prc.db_id, prc.file_id, prc.page_id, 'LIMITED') AS dpi
+
+
+Solutions
+
+General advice: 
+1. Do not explicitly drop temp tables at the end of a stored procedure; they will be automatically cleaned up when the session that created them ends.  
+2. Avoid altering temp tables after they have been created.  
+3. Refrain from truncating temp tables.
+
+Other recommended solution: MEMORY OPTIMIZED TEMPDB
+
+1. Moving metadata information to memory optimized tempdb; this will need RESTARTING the server. Works in 2019 and 2022
+ -- Memory contention can be the side effect (check Standard Report - Memory Consumption). HIGH MEMORYCLERK_XTP
+--ENABLE MEMORY-OPTIMIZED TEMPDB METADATA   SERVER RESTART NEEDED
+ALTER SERVER CONFIGURATION SET MEMORY_OPTIMIZED TEMPDB_METADATA=ON;
+GO
+-- Check configrutaion change
+SELECT SERVERPROPERTY('IsTempDBMetadataMemoryOptimized') AS IsTempDBMetadataMemoryOptimized; 
+GO
+-- TURN it OFF
+ALTER SERVER CONFIGURATION SET MEMORY_OPTIMIZED TEMPDB_METADATA=OFF;
+GO
+
+
+You can use Resource governor to limit memory
+--https://learn.microsoft.com/en-us/sql/relational-databases/databases/tempdb-database?view=sql-server-ver16
+-- Enabling this feature with resource pool
+CREATE RESOURCE POOL tempdb_resource_pool
+WITH (MAX_MEMORY_PERCENT = 20);
+
+ALTER RESOURCE GOVERNOR RECONFIGURE;
+
+ALTER SERVER CONFIGURATION
+SET MEMORY_OPTIMIZED TEMPDB_METADATA = ON
+(RESOURCE_POOL = 'tempdb_resource_pool');
+
+
