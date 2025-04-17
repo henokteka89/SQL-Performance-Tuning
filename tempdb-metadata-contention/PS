@@ -1,0 +1,99 @@
+# Define parameters
+$SqlServer = "localhost"   # Update if needed
+$Database = "StackOverflow2010"
+$ConcurrentSessions = 2000   # Number of parallel jobs/sessions
+
+# T-SQL workload (your tempdb metadata contention script)
+$Query = @"
+USE StackOverflow2010;
+
+DROP TABLE IF EXISTS #top1000, #top500, #TempData, #PostSummary, #SalesSummary;
+
+SELECT TOP 100 * INTO #top1000 FROM Posts ORDER BY Score;
+
+SELECT TOP 500 * INTO #top500 FROM #top1000;
+
+DROP TABLE #top500;
+
+CREATE TABLE #TempData (ID INT IDENTITY(1,1), Col1 CHAR(100));
+
+INSERT INTO #TempData (Col1)
+SELECT TOP 1000 'DummyData'
+FROM master.dbo.spt_values;
+
+DROP TABLE #TempData;
+
+DECLARE @i INT = 0;
+WHILE @i < 10
+BEGIN
+    SELECT TOP 1000 'DummyData'
+    FROM master.dbo.spt_values;
+    SET @i += 1;
+END
+
+CREATE TABLE #PostSummary (
+    Id INT,
+    Score INT,
+    CreationDate DATETIME,
+    OwnerUserId INT
+);
+
+INSERT INTO #PostSummary (Id, Score, CreationDate, OwnerUserId)
+SELECT TOP 50000 Id, Score, CreationDate, OwnerUserId
+FROM Posts
+WHERE PostTypeId = 1
+ORDER BY CreationDate DESC;
+
+SELECT OwnerUserId, COUNT(*) AS QuestionCount, AVG(Score) AS AvgScore
+FROM #PostSummary
+WHERE OwnerUserId IS NOT NULL
+GROUP BY OwnerUserId;
+
+DROP TABLE #PostSummary;
+
+CREATE TABLE #SalesSummary (
+    SalesOrderID INT,
+    ProductID INT,
+    OrderQty SMALLINT,
+    LineTotal MONEY
+);
+"@
+
+# Start parallel jobs
+$jobs = @()
+for ($i = 1; $i -le $ConcurrentSessions; $i++) {
+    $jobs += Start-Job -ScriptBlock {
+        param ($Server, $Db, $QueryText)
+
+        function Invoke-SqlWorkload {
+            param (
+                [string]$Server,
+                [string]$Db,
+                [string]$QueryText
+            )
+
+            $ConnectionString = "Server=$Server;Database=$Db;Integrated Security=True;MultipleActiveResultSets=True"
+
+            $conn = New-Object System.Data.SqlClient.SqlConnection $ConnectionString
+            $cmd = $conn.CreateCommand()
+            $cmd.CommandTimeout = 0
+            $cmd.CommandText = $QueryText
+
+            try {
+                $conn.Open()
+                $cmd.ExecuteNonQuery() | Out-Null
+                Write-Output "Session completed on thread $($PID)"
+            } catch {
+                Write-Output "Error: $($_.Exception.Message)"
+            } finally {
+                $conn.Close()
+            }
+        }
+
+        Invoke-SqlWorkload -Server $Server -Db $Db -QueryText $QueryText
+    } -ArgumentList $SqlServer, $Database, $Query
+}
+
+# Wait and collect output
+$jobs | ForEach-Object { Wait-Job $_ }
+$jobs | ForEach-Object { Receive-Job $_; Remove-Job $_ }
