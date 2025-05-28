@@ -1,0 +1,28 @@
+-- Query 1: Get query text and execution stats based on plan handle
+SELECT 
+    qs.plan_handle,
+    qs.execution_count,
+    qs.total_worker_time,
+    qs.total_elapsed_time,
+    st.text AS query_text,
+    qp.query_plan
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+WHERE qs.plan_handle = 0x06000100885F590C32A3804EB0200001010000000000000000000000000000000000000000000000000000000;
+
+-- Query 2: Get session/request details based on the same plan handle
+SELECT 
+    r.session_id,
+    s.login_name,
+    s.host_name,
+    s.program_name,
+    s.client_interface_name,
+    r.status,
+    r.command,
+    r.start_time,
+    t.text AS query_text
+FROM sys.dm_exec_requests r
+JOIN sys.dm_exec_sessions s ON r.session_id = s.session_id
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE r.plan_handle = 0x06000100885F590C32A3804EB0200001010000000000000000000000000000000000000000000000000000000;
