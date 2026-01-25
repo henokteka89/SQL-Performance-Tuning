@@ -85,3 +85,4 @@ END;
 -- USE CASE
 -- https://learn.microsoft.com/en-us/sql/relational-databases/in-memory-oltp/overview-and-usage-scenarios?view=sql-server-ver17
 -- MS REPO to change session state https://github.com/Microsoft/sql-server-samples/tree/master/samples/applications/aspnet-session-state
+-- https://learn.microsoft.com/en-us/archive/blogs/sqlserverstorageengine/asp-net-session-state-with-sql-server-in-memory-oltp
