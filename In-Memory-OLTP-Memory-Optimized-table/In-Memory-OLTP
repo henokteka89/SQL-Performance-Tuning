@@ -1,0 +1,88 @@
+--Enable Memory-Optimized Filegroup: Configure the database to support memory-optimized tables 
+
+--Step 1: Create a FILE GROUP and Create FILE in the file group 
+
+--Create FILE GROUP
+ALTER DATABASE EnterpriseDB
+ADD FILEGROUP [MemoryOptimizedFileGroup] CONTAINS MEMORY_OPTIMIZED_DATA;
+
+ --Create FILE in the file group: the files host metadata or delta files related to the memory-optimized tables 
+ALTER DATABASE EnterpriseDB
+ADD FILE (NAME = 'MemoryOptimizedFile', FILENAME = 'D:\MemoryOptimizedData\MemoryOptimizedFile')
+TO FILEGROUP [MemoryOptimizedFileGroup];
+
+-- Check the file group and file are created and MOT can be created
+USE EnterpriseDB
+SELECT g.name, g.type_desc, f.physical_name
+ FROM sys.filegroups g JOIN sys.database_files f ON g.data_space_id = f.data_space_id
+ WHERE g.type = 'FX' AND f.type = 2
+
+--Step 2: CREATING or ALTERING the In-Memory Table
+--Use the MEMORY_OPTIMIZED option when defining the table. You can specify durability based on your requirements:
+
+--OPTION 1: SCHEMA_AND_DATA: Data persists across server restarts.
+--OPTION 2: SCHEMA_ONLY: Only schema persists; data is lost on restart.
+
+--DROP table dbo.InMemoryTable
+CREATE TABLE dbo.InMemoryTable (
+   ID INT NOT NULL PRIMARY KEY NONCLUSTERED,
+   Name NVARCHAR(50) NOT NULL,
+   CreatedDate DATETIME NOT NULL
+) WITH (MEMORY_OPTIMIZED = ON, DURABILITY = SCHEMA_AND_DATA); -- Here choose Durability 
+-- DROP table dbo.Orders
+CREATE TABLE dbo.Orders (
+    OrderID INT IDENTITY (1,1) NOT NULL PRIMARY KEY NONCLUSTERED HASH
+        WITH (BUCKET_COUNT = 100000),
+   [CustomerID] [int] NULL,
+	[OrderDate] [datetime] NULL,
+	[Amount] [decimal](10, 2) NULL) WITH (MEMORY_OPTIMIZED = ON, DURABILITY = SCHEMA_AND_DATA);
+
+--Step 3: Verify the Table :to confirm the table is memory-optimized run the following query :
+SELECT name, is_memory_optimized FROM sys.tables WHERE name = 'InMemoryTable';
+
+--* Which TABLES to change to MO
+--Good candidates
+		--High-throughput OLTP tables
+		--Insert/update heavy
+		--Short transactions
+		--Latch or lock contention
+		--Temp-like tables
+
+--Bad candidates 
+		--Large reporting tables
+		--Many foreign keys
+		--Heavy ALTER TABLE usage
+		--Rarely accessed tables
+
+--Common limitations you must know
+		--No ALTER TABLE (many operations not allowed)
+		--Limited FK support
+		--No TEXT, NTEXT, IMAGE
+		--No cross-database queries
+		--Schema changes require drop & recreate
+		--No TRUNCATE TABLE (use DELETE)
+		-- IDENTITY_INSERT not supported in NATIVELY-compiled stored procs
+
+--Native-COMPILED procs have HUGE PERFORMANCE GAIN. 
+--SAMPLE
+Go 
+CREATE PROCEDURE dbo.usp_InsertOrder
+WITH NATIVE_COMPILATION, SCHEMABINDING
+AS
+BEGIN ATOMIC
+WITH (TRANSACTION ISOLATION LEVEL = SNAPSHOT, LANGUAGE = 'us_english')
+--Delete from dbo.Orders
+--set IDENTITY_INSERT dbo.Orders ON
+--INSERT INTO dbo.Orders (OrderID, CustomerID, OrderDate, amount)
+SELECT OrderID, CustomerID, OrderDate, amount
+FROM dbo.Orders;
+--set IDENTITY_INSERT  dbo.Orders OFF
+-- IDENTITY_INSERT not supported in NATIVELY-compiled stored procs
+END;
+
+
+-- Resources 
+-- USE CASE
+-- https://learn.microsoft.com/en-us/sql/relational-databases/in-memory-oltp/overview-and-usage-scenarios?view=sql-server-ver17
+-- MS REPO to change session state https://github.com/Microsoft/sql-server-samples/tree/master/samples/applications/aspnet-session-state
+-- https://learn.microsoft.com/en-us/archive/blogs/sqlserverstorageengine/asp-net-session-state-with-sql-server-in-memory-oltp
