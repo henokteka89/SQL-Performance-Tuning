@@ -1,0 +1,10 @@
+
+
+Should we use stored procedures or queries built in the app?
+https://www.brentozar.com/archive/2019/03/should-we-use-stored-procedures-or-queries-built-in-the-app/
+
+How to Cache Stored Procedure Results (use database/table to cache results for stored pro that is called often)
+https://www.brentozar.com/archive/2013/12/how-to-cache-stored-procedure-results/
+
+Paul White recommended by Ozar
+https://sqlperformance.com/2013/08/t-sql-queries/parameter-sniffing-embedding-and-the-recompile-options

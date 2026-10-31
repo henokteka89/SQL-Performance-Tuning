@@ -1,0 +1,10 @@
+--Memory request currently, top 10
+
+select top 10 
+session_id, 
+requested_memory_kb/1024 as Requested_MB
+, granted_memory_kb/1024 as Granted_MB, query_cost,
+ideal_memory_kb, reserved_worker_count, used_worker_count,
+request_time, grant_time,  timeout_sec
+, wait_time_ms, plan_handle, sql_handle 
+from sys.dm_exec_query_memory_grants
