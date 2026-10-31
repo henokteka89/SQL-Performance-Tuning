@@ -1,0 +1,16 @@
+https://sqlperformance.com/2015/06/sql-server-2016/sys-dm-exec-function-stats
+-- sys.dm_exec_function_stats
+SELECT name = OBJECT_NAME(object_id), 
+  execution_count,
+  time_milliseconds = total_elapsed_time/1000
+FROM sys.dm_exec_function_stats
+WHERE database_id = DB_ID()
+ORDER BY name;
+
+-- sys.dm_exec_procedure_stats
+SELECT name = OBJECT_NAME(object_id), 
+  execution_count,
+  time_milliseconds = total_elapsed_time/1000
+FROM sys.dm_exec_procedure_stats
+WHERE database_id = DB_ID()
+ORDER BY name;
