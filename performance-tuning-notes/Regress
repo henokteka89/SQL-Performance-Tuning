@@ -1,0 +1,66 @@
+-- Define time window for analysis (e.g., last 24 hours)
+DECLARE @StartTime DATETIME = DATEADD(HOUR, -24, GETUTCDATE());
+DECLARE @EndTime DATETIME = GETUTCDATE();
+
+-- Threshold for performance regression (e.g., 50% increase)
+DECLARE @RegressionThreshold FLOAT = 50.0;
+
+WITH QueryPerformance AS (
+    SELECT
+        qsq.query_id,
+        qsqt.query_sql_text,
+        MIN(qsrs.first_execution_time) AS first_execution_time,
+        MAX(qsrs.last_execution_time) AS last_execution_time,
+        SUM(qsrs.execution_count) AS execution_count,
+        AVG(qsrs.avg_duration) AS avg_duration,
+        LAG(AVG(qsrs.avg_duration)) OVER (PARTITION BY qsq.query_id ORDER BY qsrs.last_execution_time) AS prev_avg_duration
+    FROM
+        sys.query_store_query qsq
+    INNER JOIN
+        sys.query_store_query_text qsqt ON qsq.query_text_id = qsqt.query_text_id
+    INNER JOIN
+        sys.query_store_plan qsp ON qsq.query_id = qsp.query_id
+    INNER JOIN
+        sys.query_store_runtime_stats qsrs ON qsp.plan_id = qsrs.plan_id
+    WHERE
+        qsrs.last_execution_time BETWEEN @StartTime AND @EndTime
+    GROUP BY
+        qsq.query_id, qsqt.query_sql_text, qsrs.last_execution_time
+)
+SELECT
+    query_id,
+    query_sql_text,
+    last_execution_time,
+    execution_count,
+    avg_duration,
+    prev_avg_duration,
+    CASE
+        WHEN prev_avg_duration IS NULL THEN 0
+        ELSE ((avg_duration - prev_avg_duration) / prev_avg_duration) * 100
+    END AS duration_increase_percent
+INTO #RegressedQueries
+FROM
+    QueryPerformance
+WHERE
+    prev_avg_duration IS NOT NULL
+    AND ((avg_duration - prev_avg_duration) / prev_avg_duration) * 100 > @RegressionThreshold;
+
+-- Check if any regressed queries are found
+IF EXISTS (SELECT 1 FROM #RegressedQueries)
+BEGIN
+    -- Send an email notification or log the results
+    -- For example, select the results to view them
+    SELECT * FROM #RegressedQueries;
+
+    -- Optional: Send email using Database Mail
+    DECLARE @EmailBody NVARCHAR(MAX);
+    SET @EmailBody = (SELECT CAST((SELECT * FROM #RegressedQueries FOR XML PATH(''), TYPE) AS NVARCHAR(MAX)));
+
+    EXEC msdb.dbo.sp_send_dbmail
+        @profile_name = 'YourMailProfile',
+        @recipients = 'your.email@company.com',
+        @subject = 'Regressed Queries Detected',
+        @body = @EmailBody;
+END
+
+DROP TABLE #RegressedQueries;
