@@ -1,0 +1,122 @@
+-- Capture Stored Procedure Execution Details Using Extended Events
+
+-- Create the Extended Events Session
+CREATE EVENT SESSION CaptureModuleEnd
+ON SERVER
+ADD EVENT sqlserver.module_end(
+    ACTION (
+        sqlserver.sql_text,
+        sqlserver.database_name,
+        sqlserver.username,
+        sqlserver.client_hostname,
+        sqlserver.client_app_name
+    )
+    WHERE sqlserver.sql_text LIKE '%usp_GetRecentSalesOrders%' -- Filter by procedure name
+)
+ADD TARGET package0.event_file (SET filename = 'ModuleEndCapture.xel')
+WITH (STARTUP_STATE = ON); -- Ensure the session starts automatically with SQL Server
+GO
+
+-- Start the session
+ALTER EVENT SESSION CaptureModuleEnd ON SERVER STATE = START;
+
+-- Query Captured Data
+ SELECT
+    event_xml.value('(event/action[@name="sql_text"]/value)[1]', 'NVARCHAR(MAX)') AS sql_text,
+    event_xml.value('(event/action[@name="database_name"]/value)[1]', 'NVARCHAR(MAX)') AS database_name,
+    event_xml.value('(event/action[@name="username"]/value)[1]', 'NVARCHAR(MAX)') AS username,
+    event_xml.value('(event/action[@name="client_hostname"]/value)[1]', 'NVARCHAR(MAX)') AS client_hostname,
+    event_xml.value('(event/action[@name="client_app_name"]/value)[1]', 'NVARCHAR(MAX)') AS client_app_name
+FROM 
+    (SELECT CAST(event_data AS XML) AS event_xml
+     FROM sys.fn_xe_file_target_read_file('ModuleEndCapture*.xel', NULL, NULL, NULL)) AS xe;
+
+-- Stop the Extended Events Session
+ALTER EVENT SESSION CaptureModuleEnd ON SERVER STATE = STOP;
+GO
+
+-- Drop the Extended Events Session
+
+DROP EVENT SESSION CaptureModuleEnd ON SERVER;
+GO
+
+
+---
+/*
+-- Altergin size of event file
+ALTER EVENT SESSION [CaptureModuleEnd] ON SERVER 
+DROP TARGET package0.event_file
+ALTER EVENT SESSION [CaptureModuleEnd] ON SERVER 
+ADD TARGET package0.event_file(SET filename=N'ModuleEndCapture.xel',max_file_size=(100))
+GO
+
+OR
+
+ALTER EVENT SESSION CaptureModuleEnd ON SERVER
+ADD EVENT sqlserver.module_end
+ADD TARGET package0.event_file 
+(
+    SET filename = 'ModuleEndCapture.xel',
+        max_file_size = 10MB,          -- Set maximum size for each file
+        max_rollover_files = 5          -- Set maximum number of files to retain
+)
+WITH (STARTUP_STATE = ON);
+
+*/
+---
+---
+/*
+-- Alter to include multiple stored procs
+ALTER EVENT SESSION CaptureModuleEnd
+ON SERVER
+DROP EVENT sqlserver.module_end;
+
+ALTER EVENT SESSION CaptureModuleEnd
+ON SERVER
+ADD EVENT sqlserver.module_end(
+    ACTION (
+        sqlserver.sql_text,
+        sqlserver.database_name,
+        sqlserver.username,
+        sqlserver.client_hostname,
+        sqlserver.client_app_name
+    )
+    WHERE sqlserver.sql_text LIKE '%usp_GetRecentSalesOrders%'
+       OR sqlserver.sql_text LIKE '%usp_ProductSalesByRegion%'
+);
+GO
+
+-- Restart the session
+--ALTER EVENT SESSION CaptureModuleEnd ON SERVER STATE = START;
+  */
+---
+
+
+--insert into a table
+CREATE TABLE dbo.ModuleEndEventLog
+(
+    EventID INT IDENTITY PRIMARY KEY,
+    SQLText NVARCHAR(MAX),
+    DatabaseName NVARCHAR(128),
+    Username NVARCHAR(128),
+    ClientHostname NVARCHAR(128),
+    ClientAppName NVARCHAR(128),
+    EventTime DATETIME DEFAULT GETDATE()  -- Optional to track when the event is logged into the table
+);
+
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Insert the event data into the target table
+    INSERT INTO dbo.ModuleEndEventLog (SQLText, DatabaseName, Username, ClientHostname, ClientAppName)
+    SELECT 
+        event_data_xml.value('(/event/action[@name="sql_text"]/value)[1]', 'NVARCHAR(MAX)') AS SQLText,
+        event_data_xml.value('(/event/action[@name="database_name"]/value)[1]', 'NVARCHAR(128)') AS DatabaseName,
+        event_data_xml.value('(/event/action[@name="username"]/value)[1]', 'NVARCHAR(128)') AS Username,
+        event_data_xml.value('(/event/action[@name="client_hostname"]/value)[1]', 'NVARCHAR(128)') AS ClientHostname,
+        event_data_xml.value('(/event/action[@name="client_app_name"]/value)[1]', 'NVARCHAR(128)') AS ClientAppName
+    FROM sys.fn_xe_file_target_read_file('ModuleEndCapture*.xel', NULL, NULL, NULL) AS x
+    CROSS APPLY (SELECT CAST(x.event_data AS XML) AS event_data_xml) AS data_table;
+
+    PRINT 'Event data transferred successfully to ModuleEndEventLog.';
+END;

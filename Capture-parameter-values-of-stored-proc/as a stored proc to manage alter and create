@@ -1,0 +1,254 @@
+CREATE OR ALTER PROCEDURE usp_ManageProcTracking
+    @Command NVARCHAR(10),           -- 'CREATE', 'ALTER', 'START', 'STOP', 'READ', 'DROP', 'HELP', 'LOG'
+    @ProcName NVARCHAR(MAX) = NULL,  -- Name of the stored procedure to track
+    @Confirmation BIT = 0            -- Confirmation required when capturing all procedures
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Convert @Command to upper case for case-insensitive comparison
+    SET @Command = UPPER(LTRIM(RTRIM(@Command)));
+
+    -- Declare variables
+    DECLARE @SessionName NVARCHAR(100) = N'CaptureModuleEnd';
+    DECLARE @FileName NVARCHAR(260) = N'ModuleEndCapture.xel'; -- File to store event output
+    DECLARE @SQL NVARCHAR(MAX) = N'';
+    DECLARE @Predicate NVARCHAR(MAX) = N'';
+    DECLARE @ArchiveTable NVARCHAR(128) = N'admin.dbo.ModuleEndEventArchive';
+    DECLARE @ErrorMessage NVARCHAR(4000); -- To handle error messages
+
+    -- Handle the HELP command to provide information about the stored procedure
+    IF @Command = 'HELP'
+    BEGIN
+        PRINT 'Stored Procedure: usp_ManageProcTracking';
+        PRINT 'This stored procedure manages SQL Server Extended Events sessions to track stored procedure executions.';
+        PRINT 'Available Commands:';
+        PRINT '  CREATE - Create a new event session to track a specific stored procedure.';
+        PRINT '  ALTER - Alter the existing event session to track a different stored procedure.';
+        PRINT '  START - Start the event session.';
+        PRINT '  STOP - Stop the event session.';
+        PRINT '  READ - Read data from the event file and display it.';
+        PRINT '  DROP - Drop the existing event session.';
+        PRINT '  LOG - Archive data from the event file into the log table and the admin archive table.';
+        PRINT 'Examples:';
+        PRINT '  EXEC usp_ManageProcTracking @Command = ''CREATE'', @ProcName = ''usp_GetRecentSalesOrders'';';
+        PRINT '  EXEC usp_ManageProcTracking @Command = ''ALTER'', @ProcName = ''usp_UpdateCustomerOrders'';';
+        PRINT '  EXEC usp_ManageProcTracking @Command = ''START'';';
+        PRINT '  EXEC usp_ManageProcTracking @Command = ''STOP'';';
+        PRINT '  EXEC usp_ManageProcTracking @Command = ''READ'';';
+        PRINT '  EXEC usp_ManageProcTracking @Command = ''LOG'';';
+        PRINT '  EXEC usp_ManageProcTracking @Command = ''DROP'';';
+        RETURN;
+    END
+
+    -- Ensure the admin database and the archive table exist (only needed for LOG)
+    IF @Command = 'LOG'
+    BEGIN
+        IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'admin')
+        BEGIN
+            RAISERROR('The admin database does not exist.', 16, 1);
+            RETURN;
+        END
+
+        -- Create the archive table if it doesn't exist
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ModuleEndEventArchive' AND schema_id = SCHEMA_ID('dbo') AND OBJECT_ID = OBJECT_ID(@ArchiveTable))
+        BEGIN
+            EXEC ('CREATE TABLE ' + @ArchiveTable + ' (
+                    EventID INT IDENTITY PRIMARY KEY,
+                    SQLText NVARCHAR(MAX),
+                    DatabaseName NVARCHAR(128),
+                    Username NVARCHAR(128),
+                    ClientHostname NVARCHAR(128),
+                    ClientAppName NVARCHAR(128),
+                    EventTime DATETIME DEFAULT GETDATE()
+                  );');
+        END
+    END
+
+    -- Validate @Command
+    IF @Command NOT IN ('CREATE', 'ALTER', 'START', 'STOP', 'READ', 'DROP', 'LOG', 'HELP')
+    BEGIN
+        RAISERROR('Invalid command specified. Valid commands are: CREATE, ALTER, START, STOP, READ, DROP, LOG, HELP.', 16, 1);
+        RETURN;
+    END
+
+    -- Handle CREATE or ALTER: Build SQL with predicate if needed
+    IF @Command IN ('CREATE', 'ALTER')
+    BEGIN
+        -- Handle warning if no stored procedure name is provided
+        IF @ProcName IS NULL OR LTRIM(RTRIM(@ProcName)) = ''
+        BEGIN
+            PRINT 'Warning: No specific stored procedure specified. This will capture all stored procedure executions.';
+            IF @Confirmation <> 1
+            BEGIN
+                RAISERROR('Confirmation is required to proceed without specifying a stored procedure.', 16, 1);
+                RETURN;
+            END
+            SET @Predicate = N'1=1'; -- Capture all stored procedure executions
+        END
+        ELSE
+        BEGIN
+            -- Properly format the LIKE condition with the given stored procedure name
+            SET @ProcName = LTRIM(RTRIM(@ProcName));
+            SET @ProcName = REPLACE(@ProcName, '''', '''''');  -- Escape single quotes if any
+            SET @Predicate = N'sqlserver.sql_text LIKE ''%' + @ProcName + N'%''';
+        END
+    END
+
+    -- Construct the SQL statement based on the command
+    IF @Command = 'CREATE'
+    BEGIN
+        SET @SQL = '
+            CREATE EVENT SESSION ' + QUOTENAME(@SessionName) + N' ON SERVER
+            ADD EVENT sqlserver.module_end
+            (
+                ACTION
+                (
+                    sqlserver.sql_text,
+                    sqlserver.database_name,
+                    sqlserver.username,
+                    sqlserver.client_hostname,
+                    sqlserver.client_app_name
+                )
+                WHERE (' + @Predicate + N')
+            )
+            ADD TARGET package0.event_file (SET filename = N''' + @FileName + N''');
+        ';
+    END
+    ELSE IF @Command = 'ALTER'
+    BEGIN
+        SET @SQL = '
+            ALTER EVENT SESSION ' + QUOTENAME(@SessionName) + N' ON SERVER
+            DROP EVENT sqlserver.module_end;
+            ALTER EVENT SESSION ' + QUOTENAME(@SessionName) + N' ON SERVER
+            ADD EVENT sqlserver.module_end
+            (
+                ACTION
+                (
+                    sqlserver.sql_text,
+                    sqlserver.database_name,
+                    sqlserver.username,
+                    sqlserver.client_hostname,
+                    sqlserver.client_app_name
+                )
+                WHERE (' + @Predicate + N')
+            );
+        ';
+    END
+    ELSE IF @Command = 'START'
+    BEGIN
+        SET @SQL = N'ALTER EVENT SESSION ' + QUOTENAME(@SessionName) + N' ON SERVER STATE = START;';
+    END
+    ELSE IF @Command = 'STOP'
+    BEGIN
+        SET @SQL = N'ALTER EVENT SESSION ' + QUOTENAME(@SessionName) + N' ON SERVER STATE = STOP;';
+    END
+    ELSE IF @Command = 'READ'
+    BEGIN
+        BEGIN TRY
+            -- Read and display the event data from the event file
+            SET @SQL = N'
+                SELECT
+                    event_data_xml.value(''(event/action[@name="sql_text"]/value)[1]'', ''NVARCHAR(MAX)'') AS SQLText,
+                    event_data_xml.value(''(event/action[@name="database_name"]/value)[1]'', ''NVARCHAR(128)'') AS DatabaseName,
+                    event_data_xml.value(''(event/action[@name="username"]/value)[1]'', ''NVARCHAR(128)'') AS Username,
+                    event_data_xml.value(''(event/action[@name="client_hostname"]/value)[1]'', ''NVARCHAR(128)'') AS ClientHostname,
+                    event_data_xml.value(''(event/action[@name="client_app_name"]/value)[1]'', ''NVARCHAR(128)'') AS ClientAppName
+                FROM sys.fn_xe_file_target_read_file(''ModuleEndCapture*.xel'', NULL, NULL, NULL) AS x
+                CROSS APPLY (SELECT CAST(x.event_data AS XML) AS event_data_xml) AS data_table;
+            ';
+
+            -- Execute and display the data
+            EXEC sp_executesql @SQL;
+
+        END TRY
+        BEGIN CATCH
+            -- Return error details if any issue occurs
+            SET @ErrorMessage = ERROR_MESSAGE();
+            RAISERROR(@ErrorMessage, 16, 1);
+        END CATCH
+    END
+    ELSE IF @Command = 'LOG'
+    BEGIN
+        BEGIN TRY
+            -- Truncate the ModuleEndEventLog to avoid duplicates
+            TRUNCATE TABLE dbo.ModuleEndEventLog;
+
+            -- Insert the event data into the target table
+            INSERT INTO dbo.ModuleEndEventLog (SQLText, DatabaseName, Username, ClientHostname, ClientAppName)
+           SELECT 
+        event_data_xml.value('(/event/action[@name="sql_text"]/value)[1]', 'NVARCHAR(MAX)') AS SQLText,
+        event_data_xml.value('(/event/action[@name="database_name"]/value)[1]', 'NVARCHAR(128)') AS DatabaseName,
+        event_data_xml.value('(/event/action[@name="username"]/value)[1]', 'NVARCHAR(128)') AS Username,
+        event_data_xml.value('(/event/action[@name="client_hostname"]/value)[1]', 'NVARCHAR(128)') AS ClientHostname,
+        event_data_xml.value('(/event/action[@name="client_app_name"]/value)[1]', 'NVARCHAR(128)') AS ClientAppName
+    FROM sys.fn_xe_file_target_read_file('ModuleEndCapture*.xel', NULL, NULL, NULL) AS x
+    CROSS APPLY (SELECT CAST(x.event_data AS XML) AS event_data_xml) AS data_table;
+
+
+            -- Insert into the archive table in the admin database
+            --INSERT INTO admin.dbo.ModuleEndEventArchive (SQLText, DatabaseName, Username, ClientHostname, ClientAppName)
+            --SELECT SQLText, DatabaseName, Username, ClientHostname, ClientAppName
+            --FROM dbo.ModuleEndEventLog;
+
+            PRINT 'Event data has been logged to admin.dbo.ModuleEndEventArchive. You can query it using: select * from admin.dbo.ModuleEndEventLog';
+        END TRY
+        BEGIN CATCH
+            -- Return error details if any issue occurs
+            SET @ErrorMessage = ERROR_MESSAGE();
+            RAISERROR(@ErrorMessage, 16, 1);
+        END CATCH
+    END
+    ELSE IF @Command = 'DROP'
+    BEGIN
+        SET @SQL = N'
+            ALTER EVENT SESSION ' + QUOTENAME(@SessionName) + N' ON SERVER STATE = STOP;
+            DROP EVENT SESSION ' + QUOTENAME(@SessionName) + N' ON SERVER;
+        ';
+    END
+
+    -- Print the SQL statement for debugging
+    PRINT @SQL;
+
+    -- Execute the constructed SQL if the command is not 'READ' or 'LOG'
+    IF @Command NOT IN ('READ', 'LOG')
+    BEGIN
+        EXEC sp_executesql @SQL;
+
+        -- Print success messages
+        IF @Command IN ('CREATE', 'ALTER')
+            PRINT N'Extended Events session [' + @SessionName + N'] has been ' + @Command + 'D successfully.';
+        ELSE IF @Command = 'START'
+            PRINT N'Extended Events session [' + @SessionName + N'] has been started.';
+        ELSE IF @Command = 'STOP'
+            PRINT N'Extended Events session [' + @SessionName + N'] has been stopped.';
+        ELSE IF @Command = 'DROP'
+            PRINT N'Extended Events session [' + @SessionName + N'] has been dropped.';
+    END
+END;
+GO
+
+
+------------
+This stored procedure manages SQL Server Extended Events sessions to track stored procedure executions.
+Available Commands:
+  CREATE - Create a new event session to track a specific stored procedure.
+  ALTER - Alter the existing event session to track a different stored procedure.
+  START - Start the event session.
+  STOP - Stop the event session.
+  READ - Read data from the event file and display it.
+  DROP - Drop the existing event session.
+  LOG - Archive data from the event file into the log table and the admin archive table.
+
+
+  EXEC usp_ManageProcTracking @Command = 'CREATE', @ProcName = 'usp_GetRecentSalesOrders';
+  EXEC usp_ManageProcTracking @Command = 'ALTER', @ProcName = 'usp_UpdateCustomerOrders';
+  EXEC usp_ManageProcTracking @Command = 'START';
+  EXEC usp_ManageProcTracking @Command = 'STOP';
+  EXEC usp_ManageProcTracking @Command = 'READ';
+  EXEC usp_ManageProcTracking @Command = 'LOG';
+  EXEC usp_ManageProcTracking @Command = 'DROP';
+
+select * from admin.dbo.ModuleEndEventLog
+--drop table ModuleEndEventLog, ModuleEndEventArchive
+ 

@@ -1,0 +1,55 @@
+
+/*-- Drop the existing session if it already exists
+IF EXISTS (SELECT * FROM sys.server_event_sessions WHERE name = 'CaptureBatchWithParameters')
+BEGIN
+    DROP EVENT SESSION CaptureBatchWithParameters ON SERVER;
+END
+GO
+
+-- Create a new Extended Events session to capture stored procedure executions, including parameter values
+CREATE EVENT SESSION CaptureBatchWithParameters ON SERVER
+ADD EVENT sqlserver.sql_batch_starting
+(
+    ACTION
+    (
+        sqlserver.sql_text,                -- Captures the full SQL text including parameters
+        sqlserver.database_name,           -- Captures the database name
+        sqlserver.username,                -- Captures the username who executed the procedure
+        sqlserver.client_hostname,         -- Captures the hostname from which it was executed
+        sqlserver.client_app_name,         -- Captures the client application name
+        sqlserver.client_pid               -- Captures the client process ID
+    )
+    WHERE (
+        sqlserver.sql_text LIKE '%usp_GetRecentSalesOrders%'    -- Tracking first stored procedure
+        OR sqlserver.sql_text LIKE '%usp_UpdateCustomerOrders%' -- Tracking second stored procedure
+    )
+)
+ADD TARGET package0.event_file (SET filename = N'BatchWithParametersCapture.xel')
+WITH 
+(
+    MAX_MEMORY = 4096 KB,                -- Memory buffer for the event session
+    EVENT_RETENTION_MODE = ALLOW_SINGLE_EVENT_LOSS,
+    MAX_DISPATCH_LATENCY = 30 SECONDS,   -- Dispatch latency for event data collection
+    MAX_EVENT_SIZE = 0 KB,
+    MEMORY_PARTITION_MODE = NONE,
+    TRACK_CAUSALITY = ON,                -- Track causality
+    STARTUP_STATE = OFF                  -- Start the event session manually
+);
+GO
+
+-- Start the Extended Events session
+ALTER EVENT SESSION CaptureBatchWithParameters ON SERVER STATE = START;
+GO
+*/
+
+
+SELECT
+    event_data_xml.value('(/event/action[@name="sql_text"]/value)[1]', 'NVARCHAR(MAX)') AS SQLText,
+    event_data_xml.value('(/event/action[@name="database_name"]/value)[1]', 'NVARCHAR(128)') AS DatabaseName,
+    event_data_xml.value('(/event/action[@name="username"]/value)[1]', 'NVARCHAR(128)') AS Username,
+    event_data_xml.value('(/event/action[@name="client_hostname"]/value)[1]', 'NVARCHAR(128)') AS ClientHostname,
+    event_data_xml.value('(/event/action[@name="client_app_name"]/value)[1]', 'NVARCHAR(128)') AS ClientAppName,
+    event_data_xml.value('(/event/action[@name="client_pid"]/value)[1]', 'NVARCHAR(128)') AS ClientPID,
+    event_data_xml.value('(/event/@timestamp)[1]', 'DATETIME') AS EventTime
+FROM sys.fn_xe_file_target_read_file('BatchWithParametersCapture*.xel', NULL, NULL, NULL) AS x
+CROSS APPLY (SELECT CAST(x.event_data AS XML) AS event_data_xml) AS data_table;
