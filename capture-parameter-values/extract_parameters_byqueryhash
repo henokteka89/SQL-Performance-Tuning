@@ -3,20 +3,21 @@ DECLARE @QueryHash binary(8) = 0x8D3E4F2A1B6C7D90;  -- your query hash
 ;WITH XMLNAMESPACES (DEFAULT 'http://schemas.microsoft.com/sqlserver/2004/07/showplan'),
 p AS (
     SELECT DISTINCT
-           qs.plan_handle, qs.query_plan_hash,
+           qp.plan_id, qp.query_plan_hash, qp.last_execution_time,
            c.n.value('@Column','sysname')                       AS param_name,
            c.n.value('@ParameterDataType','nvarchar(128)')      AS data_type,
            c.n.value('@ParameterCompiledValue','nvarchar(max)') AS v
-    FROM sys.dm_exec_query_stats qs
-    CROSS APPLY sys.dm_exec_text_query_plan(qs.plan_handle, qs.statement_start_offset, qs.statement_end_offset) t
-    CROSS APPLY (SELECT TRY_CAST(t.query_plan AS xml)) x(qp)
-    CROSS APPLY x.qp.nodes('//ParameterList/ColumnReference') c(n)
-    WHERE qs.query_hash = @QueryHash
+    FROM sys.query_store_query q
+    JOIN sys.query_store_plan  qp ON qp.query_id = q.query_id
+    CROSS APPLY (SELECT TRY_CAST(qp.query_plan AS xml)) x(px)
+    CROSS APPLY x.px.nodes('//ParameterList/ColumnReference') c(n)
+    WHERE q.query_hash = @QueryHash
 )
-SELECT plan_handle, query_plan_hash,
+SELECT plan_id, query_plan_hash, last_execution_time,
        declare_stmt = 'DECLARE ' + STRING_AGG(CAST(
                           param_name + ' ' + ISNULL(data_type, 'sql_variant') + ' = '
                           + ISNULL(CASE WHEN v LIKE '(%)' THEN SUBSTRING(v, 2, LEN(v) - 2) ELSE v END, 'NULL')
                       AS nvarchar(max)), ', ') WITHIN GROUP (ORDER BY param_name) + ';'
 FROM p
-GROUP BY plan_handle, query_plan_hash;
+GROUP BY plan_id, query_plan_hash, last_execution_time
+ORDER BY last_execution_time DESC;
